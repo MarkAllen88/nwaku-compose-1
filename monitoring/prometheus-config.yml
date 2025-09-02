@@ -1,14 +1,81 @@
 global:
-  scrape_interval: 15s
-  evaluation_interval: 15s
-  external_labels:
-    monitor: "Monitoring"
+  # Global settings applied to all jobs unless overridden
+  scrape_interval: 15s          # Default scrape frequency
+  evaluation_interval: 15s      # How often rules are evaluated
+  # Optional: set a global external label if you run several Prometheus instances
+  # external_labels:
+  #   monitor: "my-cluster"
 
+# ----------------------------------------------------------------------
+# SCRAPE CONFIGURATIONS
+# ----------------------------------------------------------------------
 scrape_configs:
-  - job_name: "nwaku"
-    static_configs:
-    - targets: ["nwaku:8003"]
 
-  - job_name: postgres-exporter
+  # --------------------------------------------------------------
+  # 1️⃣  Self‑monitoring – Prometheus scrapes its own metrics
+  # --------------------------------------------------------------
+  - job_name: "prometheus-self"
     static_configs:
-    - targets: ['postgres-exporter:9187']
+      - targets: ["localhost:9090"]
+    metrics_path: /metrics
+    scheme: http
+    # These internal metrics are what Grafana shows under
+    # “Scrape Duration”, “Memory Profile”, “WAL Corruptions”, etc.
+    # No special flags needed – they are emitted automatically.
+    # Keeping a separate job makes it easy to see the health of the
+    # Prometheus server itself.
+    scrape_interval: 15s
+
+  # --------------------------------------------------------------
+  # 2️⃣  Waku node (nwaku) – your application exposing /metrics
+  # --------------------------------------------------------------
+  - job_name: "nwaku"
+    # Adjust the target to match how the container is reachable from
+    # the Prometheus container. Common patterns:
+    #   • Same Docker network, use the service name:   nwaku:9091
+    #   • Exposed on the host, use host.docker.internal:9091
+    #   • Direct IP address of the container: 172.18.0.2:9091
+    static_configs:
+      - targets: ["nwaku:9091"]   # <-- Updated to the actual metrics port
+    metrics_path: /metrics
+    scheme: http
+    # Shorter interval gives you faster feedback while you’re debugging.
+    # Feel free to increase to 30s or 1m once everything works.
+    scrape_interval: 10s
+    # Optional: add a timeout if the node sometimes hangs
+    scrape_timeout: 5s
+    # Relabeling can be useful if you want to attach extra labels,
+    # e.g. environment, region, etc.
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: "nwaku"
+
+  # --------------------------------------------------------------
+  # 3️⃣  (Optional) PostgreSQL exporter – you mentioned “postgres”
+  # --------------------------------------------------------------
+  - job_name: "postgres"
+    static_configs:
+      - targets: ["postgres-exporter:9187"]   # adjust host/port as needed
+    metrics_path: /metrics
+    scheme: http
+    scrape_interval: 30s
+    # If you need basic auth:
+    # basic_auth:
+    #   username: your_user
+    #   password: your_password
+
+# ----------------------------------------------------------------------
+# RULES (optional – you can add alerting/recording rules here)
+# ----------------------------------------------------------------------
+rule_files:
+  # - "alert.rules.yml"
+  # - "recording.rules.yml"
+
+# ----------------------------------------------------------------------
+# REMOTE WRITE / READ (optional – for federation or long‑term storage)
+# ----------------------------------------------------------------------
+# remote_write:
+#   - url: "http://remote-storage:9201/write"
+# remote_read:
+#   - url: "http://remote-storage:9201/read"

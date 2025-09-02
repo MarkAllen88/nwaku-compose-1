@@ -1,0 +1,16 @@
+# ------------------------------
+# Postgres Exporter configuration
+# ------------------------------
+
+datasource:
+  # This is optional because we already pass the DSN via DATA_SOURCE_NAME,
+  # but keeping it here makes the file self‑contained.
+  url: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/postgres?sslmode=disable"
+
+# ----- Retention policy (the crucial part) -----
+  retention_policy: time          # must be either `time` or `size`
+  retention_time: 15d             # keep 15 days of messages (use 7d, 30d, etc.)
+
+# If you prefer a size‑based limit, comment the two lines above and use:
+# retention_policy: size
+# retention_size: 5GB

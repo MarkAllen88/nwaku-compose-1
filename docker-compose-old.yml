@@ -1,0 +1,102 @@
+# docker-compose.yml
+
+services:
+  postgres:
+    image: postgres:15.4-alpine3.18
+    restart: on-failure
+    shm_size: "1g"
+    environment:
+      # Source credentials directly from the .env file
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./postgres_cfg/postgresql.conf:/etc/postgresql/postgresql.conf:Z
+      - ./postgres_cfg/db.sql:/docker-entrypoint-initdb.d/db.sql:Z
+      - ./postgresql:/var/lib/postgresql/data:Z
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    healthcheck:
+      # Use the variable to make the healthcheck robust
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  postgres-exporter:
+    # Recommendation: Pin the image version, e.g., :v0.15.0
+    image: quay.io/prometheuscommunity/postgres-exporter:latest
+    restart: on-failure
+    environment:
+      # Build the connection string from variables defined in .env
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/postgres?sslmode=disable
+    ports:
+      - "9187:9187"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  nwaku:
+    image: wakuorg/nwaku:v0.19.0
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Pass the DB URL from .env into the container
+      STORE_MESSAGE_DB_URL: ${STORE_MESSAGE_DB_URL}
+      # Other vars are already loaded by env_file
+    expose:
+      - "8003"
+    ports:
+      - "8003:8003"
+      - "30304:30304/tcp"
+      - "30304:30304/udp"
+      - "9005:9005/udp"
+      - "8000:8000/tcp"
+    volumes:
+      - ${CERTS_DIR:-./certs}:/etc/letsencrypt/:Z
+      - ./rln_tree:/etc/rln_tree/:Z
+      - ./keystore:/keystore:Z
+      - ./data:/data
+    entrypoint: ""
+    # CLEANED UP COMMAND: Uses environment variables instead of hardcoded values
+    command:
+      - --relay=true
+      - --store=true
+      - --log-level=INFO
+      # --- START: THE FIX ---
+      # REMOVE THIS LINE:
+      # - --metrics-addr=0.0.0.0:8003
+      # ADD THESE THREE LINES:
+      - --metrics-server=true
+      - --metrics-server-address=0.0.0.0
+      - --metrics-server-port=8003
+      # --- END: THE FIX ---
+      - --rest=true
+      - --rest-admin=true
+      - --rest-address=0.0.0.0
+      - --rest-port=8645
+      - --store-message-db-url=${STORE_MESSAGE_DB_URL}
+      - --rln-relay-eth-client-address=${RLN_RELAY_ETH_CLIENT_ADDRESS}
+      - --nodekey=${NODEKEY}
+      - --rln-relay-cred-password=${RLN_RELAY_CRED_PASSWORD}
+    networks:
+      default:
+        aliases:
+          - nwaku
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8003/metrics || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ... prometheus and grafana services remain mostly the same ...
+  # Recommendation: Pin their image versions as well.
+  prometheus:
+    image: prom/prometheus:v2.51.2 # Pinned version
+    # ...
+  grafana:
+    image: grafana/grafana:10.4.2 # Pinned version
+    # ...

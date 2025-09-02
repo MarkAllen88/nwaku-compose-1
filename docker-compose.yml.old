@@ -1,0 +1,114 @@
+# -----------------------------------------------------------------
+#  Shared PostgreSQL credentials – defined once, reused everywhere
+# -----------------------------------------------------------------
+x-pg-env: &pg_env
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: test123
+
+services:
+  # -----------------------------------------------------------------
+  #  Waku node – uses an image that ships wakunode2 (supports --metrics)
+  # -----------------------------------------------------------------
+  nwaku:
+    image: wakuorg/nwaku:v0.17.0 
+    container_name: nwaku
+    restart: unless-stopped
+    env_file:
+      - .env
+    expose:
+      - "8003"                           # metrics port reachable inside the Docker network
+    ports:
+      - "8003:8003"
+      - "30304:30304/tcp"
+      - "30304:30304/udp"
+      - "9005:9005/udp"
+      - "8000:8000/tcp"                 # WS port (public)
+      - "8003:8003/tcp"                 # optional host‑side expose for manual curl tests
+    environment:
+      <<: *pg_env                       # inject POSTGRES_* vars (used by STORE_MESSAGE_DB_URL)
+      DOMAIN: mywaku.example.com        # <-- replace with a DNS name that points to your public IP
+      NODEKEY: ${NODEKEY}
+      RLN_RELAY_ETH_CLIENT_ADDRESS: ${RLN_RELAY_ETH_CLIENT_ADDRESS}
+      RLN_RELAY_CRED_PASSWORD: "${RLN_RELAY_CRED_PASSWORD}"
+      STORE_MESSAGE_DB_URL: ${STORE_MESSAGE_DB_URL}
+    volumes:
+      - ./run_node.sh:/opt/run_node.sh:Z
+      - ${CERTS_DIR:-./certs}:/etc/letsencrypt/:Z
+      - ./rln_tree:/etc/rln_tree/:Z
+      - ./keystore:/keystore:Z
+      - ./nwaku-scripts/run_node.sh:/opt/run_node.sh:ro
+      - ./data:/data
+    entrypoint: sh
+    command: ["/opt/run_node.sh"]       # your wrapper script already calls wakunode2 with --metrics
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # -----------------------------------------------------------------
+  #  PostgreSQL (store‑message DB)
+  # -----------------------------------------------------------------
+  postgres:
+    image: postgres:15.4-alpine3.18
+    restart: on-failure
+    shm_size: "1g"
+    environment: *pg_env
+    volumes:
+      - ./postgres_cfg/postgresql.conf:/etc/postgresql/postgresql.conf:Z
+      - ./postgres_cfg/db.sql:/docker-entrypoint-initdb.d/db.sql:Z
+      - ./postgresql:/var/lib/postgresql/data:Z
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # -----------------------------------------------------------------
+  #  Prometheus
+  # -----------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./monitoring/prometheus-config.yml:/etc/prometheus/prometheus.yml:Z
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.size=5GB
+    ports:
+      - "9090:9090"
+    restart: on-failure
+    depends_on:
+      - nwaku
+      - postgres-exporter
+
+  # -----------------------------------------------------------------
+  #  Grafana
+  # -----------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:latest
+    env_file:
+      - ./monitoring/configuration/grafana-plugins.env
+    volumes:
+      - ./monitoring/configuration/grafana.ini:/etc/grafana/grafana.ini:Z
+      - ./monitoring/configuration/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:Z
+      - ./monitoring/configuration/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:Z
+      - ./monitoring/configuration/dashboards:/var/lib/grafana/dashboards/:Z
+    ports:
+      - "3000:3000"
+    restart: on-failure
+    depends_on:
+      - prometheus
+
+  # -----------------------------------------------------------------
+  #  Postgres exporter (DB metrics)
+  # -----------------------------------------------------------------
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.12.0
+    environment:
+      <<: *pg_env                     # reuse the same credentials
+    volumes:
+      - ./monitoring/configuration/postgres-exporter.yml:/etc/pgexporter/postgres-exporter.yml:Z
+      - ./monitoring/configuration/pg-exporter-queries.yml:/etc/pgexporter/queries.yml:Z
+    command:
+      - --config.file=/etc/pgexporter/postgres-exporter.yml
+    depends_on:
+      - postgres

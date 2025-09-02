@@ -1,0 +1,239 @@
+name: nwaku-compose
+services:
+  grafana:
+    depends_on:
+      prometheus:
+        condition: service_started
+        required: true
+    environment:
+      GF_INSTALL_PLUGINS: grafana-worldmap-panel,grafana-piechart-panel,yesoreyeram-boomtheme-panel,briangann-gauge-panel,pierosavi-imageit-panel,bessler-pictureit-panel,vonage-status-panel
+    image: grafana/grafana:latest
+    networks:
+      default: null
+    ports:
+      - mode: ingress
+        target: 3000
+        published: "3000"
+        protocol: tcp
+    restart: on-failure
+    volumes:
+      - type: bind
+        source: /users/marko/dropbox/My docs/btc/eth/Veritaseum/Waku/nwaku-compose/monitoring/configuration/grafana.ini
+        target: /etc/grafana/grafana.ini
+        bind:
+          selinux: Z
+          create_host_path: true
+      - type: bind
+        source: /users/marko/dropbox/My docs/btc/eth/Veritaseum/Waku/nwaku-compose/monitoring/configuration/dashboards.yaml
+        target: /etc/grafana/provisioning/dashboards/dashboards.yaml
+        bind:
+          selinux: Z
+          create_host_path: true
+      - type: bind
+        source: /users/marko/dropbox/My docs/btc/eth/Veritaseum/Waku/nwaku-compose/monitoring/configuration/datasources.yaml
+        target: /etc/grafana/provisioning/datasources/datasources.yaml
+        bind:
+          selinux: Z
+          create_host_path: true
+      - type: bind
+        source: /users/marko/dropbox/My docs/btc/eth/Veritaseum/Waku/nwaku-compose/monitoring/configuration/dashboards
+        target: /var/lib/grafana/dashboards
+        bind:
+          selinux: Z
+          create_host_path: true
+      - type: bind
+        source: /users/marko/dropbox/My docs/btc/eth/Veritaseum/Waku/nwaku-compose/monitoring/configuration/customizations/custom-logo.svg
+        target: /usr/share/grafana/public/img/grafana_icon.svg
+        bind:
+          selinux: Z
+          create_host_path: true
+      - type: bind
+        source: /users/marko/dropbox/My docs/btc/eth/Veritaseum/Waku/nwaku-compose/monitoring/configuration/customizations/custom-logo.svg
+        target: /usr/share/grafana/public/img/grafana_typelogo.svg
+        bind:
+          selinux: Z
+          create_host_path: true
+      - type: bind
+        source: /users/marko/dropbox/My docs/btc/eth/Veritaseum/Waku/nwaku-compose/monitoring/configuration/customizations/custom-logo.png
+        target: /usr/share/grafana/public/img/fav32.png
+        bind:
+          selinux: Z
+          create_host_path: true
+  nwaku:
+    command:
+      - /opt/run_node.sh
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: true
+    entrypoint:
+      - sh
+    environment:
+      DOMAIN: mywaku.example.com
+      EXTRA_ARGS: ""
+      NODEKEY: ""
+      NWAKU_IMAGE: ""
+      POSTGRES_PASSWORD: test123
+      POSTGRES_USER: postgres
+      RLN_CONTRACT_ADDRESS: 0xB9cd878C90E49F797B4431fBF4fb333108CB90e6
+      RLN_RELAY_CRED_PASSWORD: '# optional, can be empty'
+      RLN_RELAY_ETH_CLIENT_ADDRESS: https://linea-sepolia.infura.io/v3/8c6802bfd60442699071e875815a3839
+      STORAGE_SIZE: ""
+      STORE_MESSAGE_DB_URL: postgres://postgres:mySecretPass@postgres:5432/nwaku
+    expose:
+      - "8003"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -qO- http://localhost:8003/metrics || exit 1
+      timeout: 5s
+      interval: 15s
+      retries: 3
+      start_period: 10s
+    image: wakuorg/nwaku:v0.19.0
+    networks:
+      default:
+        aliases:
+          - nwaku
+    ports:
+      - mode: ingress
+        target: 8003
+        published: "8003"
+        protocol: tcp
+      - mode: ingress
+        target: 30304
+        published: "30304"
+        protocol: tcp
+      - mode: ingress
+        target: 30304
+        published: "30304"
+        protocol: udp
+      - mode: ingress
+        target: 9005
+        published: "9005"
+        protocol: udp
+      - mode: ingress
+        target: 8000
+        published: "8000"
+        protocol: tcp
+    restart: unless-stopped
+    volumes:
+      - type: bind
+        source: /users/marko/dropbox/My docs/btc/eth/Veritaseum/Waku/nwaku-compose/run_node.sh
+        target: /opt/run_node.sh
+        bind:
+          selinux: Z
+          create_host_path: true
+      - type: bind
+        source: /users/marko/dropbox/My docs/btc/eth/Veritaseum/Waku/nwaku-compose/certs
+        target: /etc/letsencrypt
+        bind:
+          selinux: Z
+          create_host_path: true
+      - type: bind
+        source: /users/marko/dropbox/My docs/btc/eth/Veritaseum/Waku/nwaku-compose/rln_tree
+        target: /etc/rln_tree
+        bind:
+          selinux: Z
+          create_host_path: true
+      - type: bind
+        source: /users/marko/dropbox/My docs/btc/eth/Veritaseum/Waku/nwaku-compose/keystore
+        target: /keystore
+        bind:
+          selinux: Z
+          create_host_path: true
+      - type: bind
+        source: /users/marko/dropbox/My docs/btc/eth/Veritaseum/Waku/nwaku-compose/data
+        target: /data
+        bind:
+          create_host_path: true
+  postgres:
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
+    environment:
+      POSTGRES_PASSWORD: test123
+      POSTGRES_USER: postgres
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U postgres -d postgres
+      timeout: 10s
+      interval: 30s
+      retries: 5
+      start_period: 30s
+    image: postgres:15.4-alpine3.18
+    networks:
+      default: null
+    restart: on-failure
+    shm_size: "1073741824"
+    volumes:
+      - type: bind
+        source: /users/marko/dropbox/My docs/btc/eth/Veritaseum/Waku/nwaku-compose/postgres_cfg/postgresql.conf
+        target: /etc/postgresql/postgresql.conf
+        bind:
+          selinux: Z
+          create_host_path: true
+      - type: bind
+        source: /users/marko/dropbox/My docs/btc/eth/Veritaseum/Waku/nwaku-compose/postgres_cfg/db.sql
+        target: /docker-entrypoint-initdb.d/db.sql
+        bind:
+          selinux: Z
+          create_host_path: true
+      - type: bind
+        source: /users/marko/dropbox/My docs/btc/eth/Veritaseum/Waku/nwaku-compose/postgresql
+        target: /var/lib/postgresql/data
+        bind:
+          selinux: Z
+          create_host_path: true
+  postgres-exporter:
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: true
+    environment:
+      DATA_SOURCE_NAME: postgresql://postgres:test123@postgres:5432/postgres?sslmode=disable
+    image: quay.io/prometheuscommunity/postgres-exporter:latest
+    networks:
+      default: null
+    ports:
+      - mode: ingress
+        target: 9187
+        published: "9187"
+        protocol: tcp
+    restart: on-failure
+  prometheus:
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.size=5GB
+    depends_on:
+      nwaku:
+        condition: service_started
+        required: true
+      postgres-exporter:
+        condition: service_started
+        required: true
+    image: prom/prometheus:latest
+    networks:
+      default: null
+    ports:
+      - mode: ingress
+        target: 9090
+        published: "9090"
+        protocol: tcp
+    restart: on-failure
+    volumes:
+      - type: bind
+        source: /users/marko/dropbox/My docs/btc/eth/Veritaseum/Waku/nwaku-compose/monitoring/prometheus-config.yml
+        target: /etc/prometheus/prometheus.yml
+        bind:
+          selinux: Z
+          create_host_path: true
+networks:
+  default:
+    name: nwaku-compose_default
+    driver: bridge
+x-pg-env:
+  POSTGRES_PASSWORD: test123
+  POSTGRES_USER: postgres

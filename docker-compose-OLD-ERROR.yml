@@ -1,4 +1,3 @@
-# Corrected by AI at 2:24 PM UTC on 9/2/2025
 name: MarkoP2Pworld
 
 # -------------------------------------------------
@@ -7,23 +6,30 @@ name: MarkoP2Pworld
 services:
 
   # -------------------------------------------------
-  # PostgreSQL – store message DB for the Waku node
+  # PostgreSQL – store���message DB for the Waku node
   # -------------------------------------------------
+  # image: quay.io/prometheuscommunity/postgres-exporter:latest
   postgres:
     image: postgres:15.4-alpine3.18
     restart: on-failure
     shm_size: "1g"
+    # container_name: postgres-exporter
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/postgres?sslmode=disable
+    ports:
+      - "9187:9187"
     volumes:
       - ./postgres_cfg/postgresql.conf:/etc/postgresql/postgresql.conf:Z
+      # - ./postgres_cfg/db.sql:/docker-entrypoint-initdb.d/db.sql:Z
       - ./postgresql:/var/lib/postgresql/data:Z
+      - ./etc/postgres_exporter.yml:/etc/postgres_exporter.yml:ro
     command:
-      - postgres
-      - -c
-      - config_file=/etc/postgresql/postgresql.conf
+      - postgres -c config_file=/etc/postgresql/postgresql.conf
+      - ["--config.file=/etc/postgres_exporter.yml"]
     healthcheck:
+      # CORRECT: Healthcheck uses the variable to stay in sync.
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d postgres"]
       interval: 30s
       timeout: 10s
@@ -31,51 +37,56 @@ services:
       start_period: 30s
 
   # -------------------------------------------------
-  # postgres-exporter – scrapes metrics from the DB
+  # postgres‑exporter – scrapes metrics from the DB
   # -------------------------------------------------
   postgres-exporter:
+    # image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0 # Pinned version
     image: quay.io/prometheuscommunity/postgres-exporter:latest
     restart: on-failure
     environment:
+      # CORRECT: Connection string is built dynamically from .env variables.
       DATA_SOURCE_NAME: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/postgres?sslmode=disable
     ports:
       - "9187:9187"
     volumes:
       - ./postgres_exporter.yml:/etc/postgres_exporter.yml:ro
-    command:
-      - "--config.file=/etc/postgres_exporter.yml"
     depends_on:
       postgres:
         condition: service_healthy
 
   # -------------------------------------------------
-  # nwaku – the Waku node
+  # nwaku – the Waku node (metrics exposed on 8003)
   # -------------------------------------------------
   nwaku:
     image: wakuorg/nwaku:v0.19.0
     restart: unless-stopped
     env_file: .env
     environment:
+      # Pass the DB URL into the container so the command can use it.
       STORE_MESSAGE_DB_URL: ${STORE_MESSAGE_DB_URL}
     expose:
-      - "9091"
+      - "8003"                         # metrics port reachable inside the Docker network
     ports:
+      - "9091:9091"                    # host‑side mapping for manual curl / browser checks
       - "30304:30304/tcp"
       - "30304:30304/udp"
       - "9005:9005/udp"
       - "8000:8000/tcp"
-      - "8645:8645"
     volumes:
       - ${CERTS_DIR:-./certs}:/etc/letsencrypt/:Z
       - ./rln_tree:/etc/rln_tree/:Z
       - ./keystore:/keystore:Z
       - ./data:/data
-    # FIXED: Removed the explicit entrypoint to allow the image's default startup script to run.
-    # This is the correct way to run this container.
+    entrypoint: ""
     command:
+      # FIX: Ensure `wakunode2` is the first item in the command list.
+      - wakunode2
       - --relay=true
       - --store=true
+      # - --log-level=INFO
       - --log-level=DEBUG
+      # - --log-level=TRACE
+      # FIX: Replaced '--metrics-addr' with the correct flags for nwaku v0.19.0
       - --metrics-server=true
       - --metrics-server-address=0.0.0.0
       - --metrics-server-port=9091
@@ -83,6 +94,7 @@ services:
       - --rest-admin=true
       - --rest-address=0.0.0.0
       - --rest-port=8645
+      # FIX: Use the variable for the DB URL, not a hardcoded string.
       - --store-message-db-url=${STORE_MESSAGE_DB_URL}
       - --store-message-retention-policy=${RETENTION_POLICY}
       - --rln-relay-eth-client-address=${RLN_RELAY_ETH_CLIENT_ADDRESS}
@@ -95,7 +107,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:9091/metrics || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8003/metrics || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -105,7 +117,7 @@ services:
   # Prometheus – scrapes the exporter (and any other targets)
   # -------------------------------------------------
   prometheus:
-    image: prom/prometheus:v2.51.2
+    image: prom/prometheus:v2.51.2 # Pinned version
     ports:
       - "9090:9090"
     volumes:
@@ -122,7 +134,7 @@ services:
   # Grafana – visualises the metrics
   # -------------------------------------------------
   grafana:
-    image: grafana/grafana:10.4.2
+    image: grafana/grafana:10.4.2 # Pinned version
     ports:
       - "3000:3000"
     env_file:
@@ -141,16 +153,16 @@ services:
     restart: on-failure
     depends_on:
       - prometheus
-
 # -------------------------------------------------
-# Volumes
+# Volumes (outside any service)
 # -------------------------------------------------
 volumes:
   grafana-data:
 
 # -------------------------------------------------
-# Networks
+# Networks (Docker will create a default bridge if omitted)
 # -------------------------------------------------
 networks:
   default:
     driver: bridge
+
