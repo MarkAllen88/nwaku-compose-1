@@ -52,7 +52,7 @@ services:
   # nwaku – the Waku node
   # -------------------------------------------------
   nwaku:
-    image: wakuorg/nwaku:v0.19.0
+    image: wakuorg/nwaku:v0.33.0
     restart: unless-stopped
     env_file: .env
     environment:
@@ -62,7 +62,7 @@ services:
     ports:
       - "30304:30304/tcp"
       - "30304:30304/udp"
-      - "9005:9005/udp"
+      - "60000:60000/tcp"
       - "8000:8000/tcp"
       - "8645:8645"
     volumes:
@@ -70,10 +70,10 @@ services:
       - ./rln_tree:/etc/rln_tree/:Z
       - ./keystore:/keystore:Z
       - ./data:/data
-    # FIXED: Removed the explicit entrypoint to allow the image's default startup script to run.
-    # This is the correct way to run this container.
     command:
       - --relay=true
+      - --lightpush=true
+      - --websocket-port=60000
       - --store=true
       - --log-level=DEBUG
       - --metrics-server=true
