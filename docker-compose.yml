@@ -71,6 +71,8 @@ services:
       - ./keystore:/keystore:Z
       - ./data:/data
     command:
+      - --cluster-id=16
+      - --pubsub-topic=/waku/2/rs/16/0
       - --relay=true
       - --lightpush=true
       - --websocket-port=60000
