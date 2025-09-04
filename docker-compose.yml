@@ -71,13 +71,20 @@ services:
       - ./rln_tree:/etc/rln_tree/:Z
       - ./keystore:/keystore:Z
       - ./data:/data
+      - ./localhost.key:/etc/nwaku/localhost.key
+      - ./localhost.crt:/etc/nwaku/localhost.crt
     command:
+#      - --ws=true
+#      - --ws-port=60000
+      - --websocket-secure-support=true
+      - --websocket-secure-key-path=/etc/nwaku/localhost.key
+      - --websocket-secure-cert-path=/etc/nwaku/localhost.crt
+      - --websocket-support=true
+      - --websocket-port=60000
       - --cluster-id=16
       - --pubsub-topic=/waku/2/rs/16/0
       - --relay=true
       - --lightpush=true
-      - --websocket-support=true
-      - --websocket-port=60000
       - --listen-address=0.0.0.0
       - --tcp-port=60002
       - --store=true

@@ -2,7 +2,8 @@
 ./decrypt_keystore/decrypt.py
 ./decrypt_keystore/README.md
 ./postgres_exporter-DUPLICATE.yml
-./postgresql/pg_wal/000000010000000000000001
+./postgresql/pg_wal/000000010000000000000003
+./postgresql/pg_wal/000000010000000000000002
 ./postgresql/PG_VERSION
 ./postgresql/pg_stat_tmp/pgss_query_texts.stat
 ./postgresql/pg_hba.conf
