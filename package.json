@@ -1,0 +1,26 @@
+{
+  "name": "nwaku-compose",
+  "version": "1.0.0",
+  "description": "Ready‑to‑use **docker compose** stack for running your own [nwaku](https://github.com/waku-org/nwaku) node.",
+  "main": "mnemonic-to-pk.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MarkAllen88/nwaku-compose-1.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/MarkAllen88/nwaku-compose-1/issues"
+  },
+  "homepage": "https://github.com/MarkAllen88/nwaku-compose-1#readme",
+  "dependencies": {
+    "@waku/zerokit-rln-wasm": "^0.2.1",
+    "ethers": "^5.8.0",
+    "rlnjs": "^3.3.0"
+  }
+}

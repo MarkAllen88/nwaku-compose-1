@@ -1,14 +1,7 @@
-# Corrected by AI at 2:24 PM UTC on 9/2/2025
 name: MarkoP2Pworld
 
-# -------------------------------------------------
-# Services
-# -------------------------------------------------
-services:
+services: 
 
-  # -------------------------------------------------
-  # PostgreSQL – store message DB for the Waku node
-  # -------------------------------------------------
   postgres:
     image: postgres:15.4-alpine3.18
     restart: on-failure
@@ -17,12 +10,12 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - ./postgres_cfg/postgresql.conf:/etc/postgresql/postgresql.conf:Z
+      - ./postgresql/postgresql.conf:/postgresql/postgresql.conf:Z
       - ./postgresql:/var/lib/postgresql/data:Z
     command:
       - postgres
       - -c
-      - config_file=/etc/postgresql/postgresql.conf
+      - config_file=/postgresql/postgresql.conf
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d postgres"]
       interval: 30s
@@ -30,14 +23,12 @@ services:
       retries: 5
       start_period: 30s
 
-  # -------------------------------------------------
-  # postgres-exporter – scrapes metrics from the DB
-  # -------------------------------------------------
   postgres-exporter:
-    image: quay.io/prometheuscommunity/postgres-exporter:latest
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
     restart: on-failure
     environment:
-      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/postgres?sslmode=disable
+      DATA_SOURCE_NAME: >-
+        postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/postgres?sslmode=disable
     ports:
       - "9187:9187"
     volumes:
@@ -48,64 +39,51 @@ services:
       postgres:
         condition: service_healthy
 
-  # -------------------------------------------------
-  # nwaku – the Waku node
-  # -------------------------------------------------
   nwaku:
-    image: wakuorg/nwaku:v0.33.0
+    image: wakuorg/nwaku:v0.36.0
     restart: unless-stopped
     env_file: .env
-    environment:
-      STORE_MESSAGE_DB_URL: ${STORE_MESSAGE_DB_URL}
-    expose:
-      - "9091"
+#    environment:
+#      WAKU_NETWORK_CONFIG: ""
+#      WAKU_CLUSTER_CONF: ""
     ports:
       - "30304:30304/tcp"
       - "30304:30304/udp"
-      - "60000:60000"   # WebSocket for browser
-      - "60002:60002"   # Raw TCP (optional, but fine)
-      - "8645:8645"     # REST
-      - "9091:9091"     # Metrics (optional)
+      - "60000:60000"
+      - "60002:60002"
+      - "8645:8645"
+      - "9091:9091"
     volumes:
-      - ${CERTS_DIR:-./certs}:/etc/letsencrypt/:Z
-      - ./rln_tree:/etc/rln_tree/:Z
       - ./keystore:/keystore:Z
       - ./data:/data
-      - ./localhost.key:/etc/nwaku/localhost.key
-      - ./localhost.crt:/etc/nwaku/localhost.crt
     command:
-#      - --ws=true
-#      - --ws-port=60000
-      - --websocket-secure-support=true
-      - --websocket-secure-key-path=/etc/nwaku/localhost.key
-      - --websocket-secure-cert-path=/etc/nwaku/localhost.crt
-      - --websocket-support=true
-      - --websocket-port=60000
-      - --cluster-id=16
-      - --pubsub-topic=/waku/2/rs/16/0
-      - --relay=true
+#      - --cluster-id=1
       - --lightpush=true
       - --listen-address=0.0.0.0
-      - --tcp-port=60002
-      - --store=true
       - --log-level=DEBUG
-      - --metrics-server=true
       - --metrics-server-address=0.0.0.0
       - --metrics-server-port=9091
-      - --rest=true
-      - --rest-admin=true
+      - --metrics-server=true
+      # CORRECT NODEKEY: This key generates the PeerID that nwaku2 expects for 'nwaku'
+      - --nodekey=32ee547b3decdb2a326625d1af592c695181fc219cf8571bd3b1e029963ffb6b
+      - --relay-peer-exchange=true
+      - --relay=true
       - --rest-address=0.0.0.0
+      - --rest-admin=true
       - --rest-port=8645
-      - --nodekey=${NWAKU_NODEKEY} 
+      - --rest=true
+      - --rln-relay=false
+      - --rendezvous=false
+#      - --discv5-bootstrap-node=enr:-QESuED0qW1BCmF-oH_ARGPr97Nv767bl_43uoy70vrbah3EaCAdK3Q0iRQ6wkSTTpdrg_dU_NC2ydO8leSlRpBX4pxiAYJpZIJ2NIJpcIRA4VDAim11bHRpYWRkcnO4XAArNiZub2RlLTAxLmRvLWFtczMud2FrdS5zYW5kYm94LnN0YXR1cy5pbQZ2XwAtNiZub2RlLTAxLmRvLWFtczMud2FrdS5zYW5kYm94LnN0YXR1cy5pbQYfQN4DgnJzkwABCAAAAAEAAgADAAQABQAGAAeJc2VjcDI1NmsxoQOTd-h5owwj-cx7xrmbvQKU8CV3Fomfdvcv1MBc-67T5oN0Y3CCdl-DdWRwgiMohXdha3UyDw
+ #     - --discv5-bootstrap-node=enr:-QEkuED9X80QF_jcN9gA2ZRhhmwVEeJnsg_Hyg7IFCTYnZD0BDI7a8HArE61NhJZFwygpHCWkgwSt2vqiABXkBxzIqZBAYJpZIJ2NIJpcIQiQlleim11bHRpYWRkcnO4bgA0Ni9ub2RlLTAxLmdjLXVzLWNlbnRyYWwxLWEud2FrdS5zYW5kYm94LnN0YXR1cy5pbQZ2XwA2Ni9ub2RlLTAxLmdjLXVzLWNlbnRyYWwxLWEud2FrdS5zYW5kYm94LnN0YXR1cy5pbQYfQN4DgnJzkwABCAAAAAEAAgADAAQABQAGAAeJc2VjcDI1NmsxoQPFAS8zz2cg1QQhxMaK8CzkGQ5wdHvPJcrgLzJGOiHpwYN0Y3CCdl-DdWRwgiMohXdha3UyDw
+ #     - --discv5-bootstrap-node=enr:-QEkuEBfEzJm_kigJ2HoSS_RBFJYhKHocGdkhhBr6jSUAWjLdFPp6Pj1l4yiTQp7TGHyu1kC6FyaU573VN8klLsEm-XuAYJpZIJ2NIJpcIQI2SVcim11bHRpYWRkcnO4bgA0Ni9ub2RlLTAxLmFjLWNuLWhvbmdrb25nLWMud2FrdS5zYW5kYm94LnN0YXR1cy5pbQZ2XwA2Ni9ub2RlLTAxLmFjLWNuLWhvbmdrb25nLWMud2FrdS5zYW5kYm94LnN0YXR1cy5pbQYfQN4DgnJzkwABCAAAAAEAAgADAAQABQAGAAeJc2VjcDI1NmsxoQOwsS69tgD7u1K50r5-qG5hweuTwa0W26aYPnvivpNlrYN0Y3CCdl-DdWRwgiMohXdha3UyDw
+      # CORRECT STATICNODE: Points to the PeerID generated by nwaku2's nodekey
+      - --staticnode=/dns4/nwaku2/tcp/60003/p2p/16Uiu2HAm9F3d75PFrM4KF8HA6EuKbSQBfjTKhZi4dLMxtoLcNufu
       - --store-message-db-url=${STORE_MESSAGE_DB_URL}
-      - --store-message-retention-policy=${RETENTION_POLICY}
-      - --rln-relay-eth-client-address=${RLN_RELAY_ETH_CLIENT_ADDRESS}
-      - --rln-relay-cred-password=${RLN_RELAY_CRED_PASSWORD}
-      - --nodekey=57adf02621712672818636f30e8c191dd7adc29222c7c4c78c22c71797bb2e43
-    networks:
-      default:
-        aliases:
-          - nwaku
+      - --store=true
+      - --tcp-port=60002
+      - --websocket-port=60000
+      - --websocket-support=true
     depends_on:
       postgres:
         condition: service_healthy
@@ -114,28 +92,75 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 30s
 
-  # -------------------------------------------------
-  # Prometheus – scrapes the exporter (and any other targets)
-  # -------------------------------------------------
+  nwaku2:
+    image: wakuorg/nwaku:v0.36.0
+    restart: unless-stopped
+    env_file: .env
+#    environment:
+#      WAKU_NETWORK_CONFIG: ""
+#      WAKU_CLUSTER_CONF: ""
+    ports:
+      # CORRECT PORT MAPPING
+      - "60001:60001"
+      - "60003:60003"
+      - "30305:30305/tcp"
+      - "30305:30305/udp"
+      - "8646:8646"
+      - "9092:9092"
+    volumes:
+      - ./keystore:/keystore:Z
+      - ./data2:/data
+    command:
+#      - --cluster-id=1
+      - --lightpush=true
+      - --listen-address=0.0.0.0
+      - --log-level=DEBUG
+      - --metrics-server-address=0.0.0.0
+      - --metrics-server-port=9092
+      - --metrics-server=true
+      # CORRECT NODEKEY: This key generates the PeerID that nwaku expects for 'nwaku2'
+      - --nodekey=2b6b888891fd2adb091ea81780634476c7ca19be1b13f2e8a06c7f9396c58731
+      - --relay-peer-exchange=true
+      - --relay=true
+      - --rest-address=0.0.0.0
+      - --rest-admin=true
+      - --rest-port=8646
+      - --rest=true
+      - --rln-relay=false
+      - --rendezvous=false
+#      - --discv5-bootstrap-node=enr:-QESuED0qW1BCmF-oH_ARGPr97Nv767bl_43uoy70vrbah3EaCAdK3Q0iRQ6wkSTTpdrg_dU_NC2ydO8leSlRpBX4pxiAYJpZIJ2NIJpcIRA4VDAim11bHRpYWRkcnO4XAArNiZub2RlLTAxLmRvLWFtczMud2FrdS5zYW5kYm94LnN0YXR1cy5pbQZ2XwAtNiZub2RlLTAxLmRvLWFtczMud2FrdS5zYW5kYm94LnN0YXR1cy5pbQYfQN4DgnJzkwABCAAAAAEAAgADAAQABQAGAAeJc2VjcDI1NmsxoQOTd-h5owwj-cx7xrmbvQKU8CV3Fomfdvcv1MBc-67T5oN0Y3CCdl-DdWRwgiMohXdha3UyDw
+#      - --discv5-bootstrap-node=enr:-QEkuED9X80QF_jcN9gA2ZRhhmwVEeJnsg_Hyg7IFCTYnZD0BDI7a8HArE61NhJZFwygpHCWkgwSt2vqiABXkBxzIqZBAYJpZIJ2NIJpcIQiQlleim11bHRpYWRkcnO4bgA0Ni9ub2RlLTAxLmdjLXVzLWNlbnRyYWwxLWEud2FrdS5zYW5kYm94LnN0YXR1cy5pbQZ2XwA2Ni9ub2RlLTAxLmdjLXVzLWNlbnRyYWwxLWEud2FrdS5zYW5kYm94LnN0YXR1cy5pbQYfQN4DgnJzkwABCAAAAAEAAgADAAQABQAGAAeJc2VjcDI1NmsxoQPFAS8zz2cg1QQhxMaK8CzkGQ5wdHvPJcrgLzJGOiHpwYN0Y3CCdl-DdWRwgiMohXdha3UyDw
+#      - --discv5-bootstrap-node=enr:-QEkuEBfEzJm_kigJ2HoSS_RBFJYhKHocGdkhhBr6jSUAWjLdFPp6Pj1l4yiTQp7TGHyu1kC6FyaU573VN8klLsEm-XuAYJpZIJ2NIJpcIQI2SVcim11bHRpYWRkcnO4bgA0Ni9ub2RlLTAxLmFjLWNuLWhvbmdrb25nLWMud2FrdS5zYW5kYm94LnN0YXR1cy5pbQZ2XwA2Ni9ub2RlLTAxLmFjLWNuLWhvbmdrb25nLWMud2FrdS5zYW5kYm94LnN0YXR1cy5pbQYfQN4DgnJzkwABCAAAAAEAAgADAAQABQAGAAeJc2VjcDI1NmsxoQOwsS69tgD7u1K50r5-qG5hweuTwa0W26aYPnvivpNlrYN0Y3CCdl-DdWRwgiMohXdha3UyDw
+      # CORRECT STATICNODE: Points to the PeerID generated by nwaku's nodekey
+      - --staticnode=/dns4/nwaku/tcp/60002/p2p/16Uiu2HAmPnLx5wdrjCZKkbyuJo8CqM38cijf3aL9hGi7KuGabepb
+      - --store=true
+      - --tcp-port=60003
+      - --websocket-port=60001
+      - --websocket-support=true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9092/metrics || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
   prometheus:
     image: prom/prometheus:v2.51.2
+    restart: unless-stopped
     ports:
       - "9090:9090"
     volumes:
-      - ./monitoring/prometheus-config.yml:/etc/prometheus/prometheus.yml:Z
+      - ./monitoring/prometheus-config.yml:/monitoring/prometheus-config.yml:Z
     command:
-      - --config.file=/etc/prometheus/prometheus.yml
+      - --config.file=/monitoring/prometheus-config.yml 
       - --storage.tsdb.retention.size=5GB
-    restart: on-failure
     depends_on:
       - postgres-exporter
       - nwaku
+      - nwaku2
 
-  # -------------------------------------------------
-  # Grafana – visualises the metrics
-  # -------------------------------------------------
   grafana:
     image: grafana/grafana:10.4.2
     ports:
@@ -153,19 +178,16 @@ services:
       - grafana-data:/var/lib/grafana
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=MyNewSecret123!
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_NAME=Main Org.
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
     restart: on-failure
     depends_on:
       - prometheus
 
-# -------------------------------------------------
-# Volumes
-# -------------------------------------------------
 volumes:
   grafana-data:
 
-# -------------------------------------------------
-# Networks
-# -------------------------------------------------
 networks:
   default:
     driver: bridge
